@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
     reset?: unknown;
     minimumMatches?: unknown;
     requiredConditions?: unknown;
+    limit?: unknown;
   };
   const valid = new Set(SCREEN_CONDITIONS.map((condition) => condition.key));
   const selectedConditions = Array.isArray(body.selectedConditions)
@@ -58,11 +59,21 @@ export async function POST(request: NextRequest) {
           typeof value === "string" && valid.has(value as ScreenCondition),
       )
     : [];
+  const limit = body.limit === undefined ? undefined : Number(body.limit);
+  if (
+    limit !== undefined &&
+    (!Number.isInteger(limit) || limit < 1 || limit > 3_700)
+  )
+    return Response.json(
+      { error: "対象件数は1〜3,700で指定してください。" },
+      { status: 400 },
+    );
   const run = await startAllStockScreening({
     selectedConditions,
     matchMode: body.matchMode === "all" ? "all" : "any",
     minimumMatches,
     requiredConditions,
+    limit,
     reset: body.reset === true,
   });
   return Response.json({ status: screeningStatus(run) }, { status: 202 });

@@ -24,6 +24,9 @@ export function AllStockScreener() {
   const [minimumMatches, setMinimumMatches] = useState(1);
   const [required, setRequired] = useState<Set<ScreenCondition>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<
+    "idle" | "copying" | "copied" | "error"
+  >("idle");
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/screen/all", { cache: "no-store" });
@@ -75,6 +78,24 @@ export function AllStockScreener() {
     }
     setStatus(payload.status);
     setResults([]);
+  }
+
+  async function copyAiAnalysisJson() {
+    setCopyState("copying");
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("clipboard-unavailable");
+      }
+      const response = await fetch("/api/screen/all/ai-export", {
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("export-failed");
+      await navigator.clipboard.writeText(await response.text());
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 3000);
+    } catch {
+      setCopyState("error");
+    }
   }
 
   const progress =
@@ -217,6 +238,27 @@ export function AllStockScreener() {
               <li>いずれか一致: {status.anyMatched ?? 0}件</li>
               <li>全条件一致: {status.allMatched ?? 0}件</li>
             </ul>
+          )}
+          {status.state === "completed" && results.length > 0 && (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => void copyAiAnalysisJson()}
+                disabled={copyState === "copying"}
+                className="flex min-h-11 w-full items-center justify-center rounded-lg border border-indigo-500 px-4 py-3 text-sm font-medium text-indigo-200 hover:bg-indigo-950 disabled:border-slate-700 disabled:text-slate-500"
+              >
+                {copyState === "copying"
+                  ? "コピー中…"
+                  : copyState === "copied"
+                    ? "コピーしました"
+                    : "AI分析用JSONをコピー"}
+              </button>
+              {copyState === "error" && (
+                <p role="alert" className="mt-2 text-xs text-rose-300">
+                  コピーできませんでした。ブラウザの権限設定をご確認ください。
+                </p>
+              )}
+            </div>
           )}
           {results.length > 0 && (
             <ul className="mt-4 space-y-2">

@@ -16,6 +16,7 @@ import {
   type AllStockScreeningStatus,
   loadScreeningRun,
   type SavedScreeningResult,
+  type ScreeningDateSummary,
   saveScreeningRun,
 } from "./screeningPersistence.ts";
 import { loadScreeningStockData } from "./screeningStockData.ts";
@@ -24,6 +25,48 @@ import { activeCommonStocks } from "./stockMaster.ts";
 export const ALL_STOCK_BATCH_SIZE = 50;
 export const ALL_STOCK_CONCURRENCY = 2;
 const RETRIES = 1;
+
+export function summarizeScreeningDates(
+  items: readonly AllStockScreeningItem[],
+): ScreeningDateSummary {
+  const dateDistribution: Record<string, number> = {};
+  for (const item of items) {
+    if (item.latestDate)
+      dateDistribution[item.latestDate] =
+        (dateDistribution[item.latestDate] ?? 0) + 1;
+  }
+  const dates = Object.entries(dateDistribution).sort(
+    ([leftDate, leftCount], [rightDate, rightCount]) =>
+      rightCount - leftCount || rightDate.localeCompare(leftDate),
+  );
+  const primaryDate = dates[0]?.[0] ?? null;
+  const primaryDateCount = dates[0]?.[1] ?? 0;
+  const staleStocks =
+    primaryDate === null
+      ? []
+      : items
+          .filter((item) => item.latestDate && item.latestDate < primaryDate)
+          .map((item) => ({
+            code: item.code,
+            latestDate: item.latestDate as string,
+            ...(item.fetchedAt ? { fetchedAt: item.fetchedAt } : {}),
+          }));
+  const fetchedTimes = items
+    .flatMap((item) => (item.fetchedAt ? [item.fetchedAt] : []))
+    .sort();
+  return {
+    primaryDate,
+    primaryDateCount,
+    staleDateCount: staleStocks.length,
+    dateDistribution,
+    oldestDate: Object.keys(dateDistribution).sort()[0] ?? null,
+    indeterminateCount: items.filter((item) => item.status !== "success")
+      .length,
+    fetchedAtMin: fetchedTimes[0] ?? null,
+    fetchedAtMax: fetchedTimes[fetchedTimes.length - 1] ?? null,
+    staleStocks,
+  };
+}
 
 type StartOptions = {
   readonly selectedConditions?: readonly ScreenCondition[];
@@ -50,6 +93,7 @@ async function processOne(
     await delay(500);
   }
   if (fetched === null || !fetched.ok) {
+    const screenedAt = new Date().toISOString();
     const noData = /見つからない|データがありません|日足データ/.test(
       fetched?.error ?? "",
     );
@@ -58,6 +102,7 @@ async function processOne(
         code,
         status: noData ? "no_data" : "fetch_error",
         error: fetched?.error ?? "取得失敗",
+        screenedAt,
       } satisfies AllStockScreeningItem,
       result: null,
       cacheHit: 0,
@@ -66,12 +111,16 @@ async function processOne(
     };
   }
   const screened = screenMovingAverageConditions(fetched.value.candles);
+  const screenedAt = new Date().toISOString();
   if (screened === null) {
     return {
       item: {
         code,
         status: "screen_error",
         error: "判定に必要な日足が不足しています。",
+        latestDate: fetched.value.latestDate,
+        fetchedAt: fetched.value.fetchedAt,
+        screenedAt,
       } satisfies AllStockScreeningItem,
       result: null,
       cacheHit: fetched.value.cache === "hit" ? 1 : 0,
@@ -107,11 +156,18 @@ async function processOne(
         unmatchedConditionNames: SCREEN_CONDITIONS.filter(({ key }) =>
           score.unmatchedConditions.includes(key),
         ).map(({ label }) => label),
-        screenedAt: new Date().toISOString(),
+        fetchedAt: fetched.value.fetchedAt,
+        screenedAt,
       }
     : null;
   return {
-    item: { code, status: "success" } satisfies AllStockScreeningItem,
+    item: {
+      code,
+      status: "success",
+      latestDate: fetched.value.latestDate,
+      fetchedAt: fetched.value.fetchedAt,
+      screenedAt,
+    } satisfies AllStockScreeningItem,
     result,
     conditions: screened.conditions,
     anyMatch,
@@ -196,6 +252,7 @@ async function worker(): Promise<void> {
       yahooRequests:
         current.yahooRequests +
         outputs.reduce((sum, output) => sum + output.yahooRequests, 0),
+      dateSummary: summarizeScreeningDates(items),
       items,
       results,
       updatedAt: new Date().toISOString(),
@@ -254,6 +311,7 @@ export async function startAllStockScreening(
     matchMode: options.matchMode ?? "any",
     minimumMatches,
     requiredConditions: options.requiredConditions ?? [],
+    dateSummary: summarizeScreeningDates([]),
     items: [],
     results: [],
   };

@@ -8,6 +8,16 @@ import type {
   SavedScreeningResult,
 } from "@/lib/screeningPersistence";
 
+const japaneseDateTime = new Intl.DateTimeFormat("ja-JP", {
+  timeZone: "Asia/Tokyo",
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function formatDateTime(value: string | null | undefined): string {
+  return value ? japaneseDateTime.format(new Date(value)) : "—";
+}
+
 export function AllStockScreener() {
   const [status, setStatus] = useState<AllStockScreeningStatus | null>(null);
   const [results, setResults] = useState<readonly SavedScreeningResult[]>([]);
@@ -155,6 +165,48 @@ export function AllStockScreener() {
             Yahoo取得 {status.yahooRequests}回 ／ キャッシュ {status.cacheHits}
             件
           </p>
+          {status.dateSummary && (
+            <div className="mt-4 rounded-lg border border-slate-800 p-3 text-xs text-slate-400">
+              <p>
+                データ基準日: {status.dateSummary.primaryDate ?? "—"} ／
+                同一基準日{" "}
+                {status.dateSummary.primaryDateCount.toLocaleString("ja-JP")} /{" "}
+                {status.total.toLocaleString("ja-JP")}
+              </p>
+              <p className="mt-1">
+                古いデータ: {status.dateSummary.staleDateCount}件 ／ 判定不能:{" "}
+                {status.dateSummary.indeterminateCount}件 ／ 最古:{" "}
+                {status.dateSummary.oldestDate ?? "—"}
+              </p>
+              <p className="mt-1">
+                データ取得日時:{" "}
+                {formatDateTime(status.dateSummary.fetchedAtMin)}
+                {status.dateSummary.fetchedAtMin !==
+                  status.dateSummary.fetchedAtMax &&
+                  ` 〜 ${formatDateTime(status.dateSummary.fetchedAtMax)}`}
+              </p>
+              <p className="mt-1">
+                スクリーニング実行日時: {formatDateTime(status.startedAt)}
+                {status.completedAt &&
+                  ` 〜 ${formatDateTime(status.completedAt)}`}
+              </p>
+              {status.dateSummary.staleStocks.length > 0 && (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-amber-300">
+                    古い基準日の銘柄を確認（
+                    {status.dateSummary.staleStocks.length}件）
+                  </summary>
+                  <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+                    {status.dateSummary.staleStocks.map((stock) => (
+                      <li key={stock.code}>
+                        {stock.code}: {stock.latestDate}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
           {status.conditionHits && (
             <ul className="mt-3 grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
               {SCREEN_CONDITIONS.map((condition) => (
@@ -180,9 +232,13 @@ export function AllStockScreener() {
                     {result.code} {result.name}
                   </Link>
                   <p className="mt-1 text-xs text-slate-500">
-                    {result.latestDate} 終値{" "}
+                    データ基準日 {result.latestDate} ／ 終値{" "}
                     {result.close.toLocaleString("ja-JP")}円 ／ 出来高{" "}
                     {result.volume.toLocaleString("ja-JP")}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    データ取得日時 {formatDateTime(result.fetchedAt)} ／
+                    判定日時 {formatDateTime(result.screenedAt)}
                   </p>
                   <p className="mt-2 text-sm font-medium text-emerald-300">
                     一致 {result.matchCount} / {result.totalConditions}（

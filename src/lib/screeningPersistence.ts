@@ -20,12 +20,16 @@ export type AllStockScreeningItem = {
   readonly code: string;
   readonly status: ScreeningItemStatus;
   readonly error?: string;
+  readonly latestDate?: string;
+  readonly fetchedAt?: string;
+  readonly screenedAt?: string;
 };
 
 export type SavedScreeningResult = StockScreeningResult & {
   readonly volume: number;
   readonly matchedReasons: readonly string[];
   readonly screenedAt: string;
+  readonly fetchedAt: string;
   readonly matchCount: number;
   readonly totalConditions: number;
   readonly matchRate: number;
@@ -33,6 +37,22 @@ export type SavedScreeningResult = StockScreeningResult & {
   readonly unmatchedConditions: readonly ScreenCondition[];
   readonly matchedConditionNames: readonly string[];
   readonly unmatchedConditionNames: readonly string[];
+};
+
+export type ScreeningDateSummary = {
+  readonly primaryDate: string | null;
+  readonly primaryDateCount: number;
+  readonly staleDateCount: number;
+  readonly dateDistribution: Readonly<Record<string, number>>;
+  readonly oldestDate: string | null;
+  readonly indeterminateCount: number;
+  readonly fetchedAtMin: string | null;
+  readonly fetchedAtMax: string | null;
+  readonly staleStocks: readonly {
+    readonly code: string;
+    readonly latestDate: string;
+    readonly fetchedAt?: string;
+  }[];
 };
 
 export type AllStockScreeningRun = {
@@ -56,6 +76,7 @@ export type AllStockScreeningRun = {
   readonly matchMode?: ScreeningMatchMode;
   readonly minimumMatches: number;
   readonly requiredConditions: readonly ScreenCondition[];
+  readonly dateSummary?: ScreeningDateSummary;
   readonly items: readonly AllStockScreeningItem[];
   readonly results: readonly SavedScreeningResult[];
 };
@@ -65,8 +86,9 @@ export type AllStockScreeningStatus = Omit<
   "items" | "results"
 >;
 
-type CachedStock = {
+export type CachedStock = {
   readonly fetchedAt: string;
+  readonly checkedForDate?: string;
   readonly name: string | null;
   readonly candles: readonly Candle[];
 };

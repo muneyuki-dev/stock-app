@@ -1,1 +1,6 @@
 @import "tailwindcss";
+
+:root {
+  /* 入力欄やスクロールバーなど、ブラウザ標準UIもダーク配色にそろえる */
+  color-scheme: dark;
+}

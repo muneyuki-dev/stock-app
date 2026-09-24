@@ -6,13 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "auth:hash": "node scripts/hash-password.mjs",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"src/**/*.test.ts\"",
+    "check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-stock.ts",
     "lint": "biome check",
     "format": "biome format --write"
   },
   "dependencies": {
+    "lightweight-charts": "^5.2.1",
     "next": "16.3.5",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "yahoo-finance2": "^4.0.2"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.2",

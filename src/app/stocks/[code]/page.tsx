@@ -31,7 +31,7 @@ export default async function StockPage(props: PageProps<"/stocks/[code]">) {
           href="/"
           className="inline-flex min-h-11 items-center text-sm text-slate-400 transition-colors hover:text-slate-200"
         >
-          ← 銘柄コード入力へ
+          ← 銘柄検索・お気に入りへ
         </Link>
         <LogoutButton />
       </div>
@@ -41,7 +41,10 @@ export default async function StockPage(props: PageProps<"/stocks/[code]">) {
           <h1 className="mt-4 text-2xl font-bold tabular-nums">
             {parsed.value.code}
           </h1>
-          <p className="mt-8 rounded-lg border border-rose-900 bg-rose-950/40 p-4 text-sm text-rose-300">
+          <p
+            role="alert"
+            className="mt-8 rounded-lg border border-rose-900 bg-rose-950/40 p-4 text-sm text-rose-300"
+          >
             {result.error}
           </p>
         </>
@@ -56,6 +59,7 @@ function StockDetail({ data }: { data: StockChartData }) {
   // クロス判定は表示期間に関係なく「取得できた全期間」から見た
   // 直近の状態を示すので、期間選択とは独立にここで一度だけ計算する
   const { latest } = analyzeMovingAverages(data.candles);
+  const latestCandle = data.candles[data.candles.length - 1];
 
   return (
     <>
@@ -85,6 +89,36 @@ function StockDetail({ data }: { data: StockChartData }) {
           <FavoriteButton code={data.code} name={data.name} />
         </div>
       </div>
+
+      {latestCandle && (
+        <section className="mt-5" aria-label="最新日足の価格と出来高">
+          <h2 className="mb-2 text-sm text-slate-400">
+            最新日足（{latestCandle.date}）
+          </h2>
+          <dl className="grid grid-cols-2 gap-2 rounded-lg border border-slate-800 p-3 text-sm sm:grid-cols-5">
+            {(
+              [
+                ["始値", latestCandle.open, data.currency],
+                ["高値", latestCandle.high, data.currency],
+                ["安値", latestCandle.low, data.currency],
+                ["終値", latestCandle.close, data.currency],
+                ["出来高", latestCandle.volume, "株"],
+              ] as const
+            ).map(([label, value, unit]) => (
+              <div key={label} className="min-w-0">
+                <dt className="text-slate-400">{label}</dt>
+                <dd className="break-words tabular-nums">
+                  {value.toLocaleString("ja-JP")}{" "}
+                  <span className="text-xs text-slate-500">{unit}</span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-2 text-xs text-slate-500">
+            取引時間中の最新日足は未確定です。
+          </p>
+        </section>
+      )}
 
       <div className="mt-5 sm:mt-6">
         <StockChartSection candles={data.candles} />

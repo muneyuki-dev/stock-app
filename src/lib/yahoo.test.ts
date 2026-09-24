@@ -5,7 +5,12 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { resolvePeriod1, toCandles, toTokyoDateString } from "./yahoo.ts";
+import {
+  resolvePeriod1,
+  stockFetchErrorMessage,
+  toCandles,
+  toTokyoDateString,
+} from "./yahoo.ts";
 
 describe("toTokyoDateString（日本時間の日付に変換）", () => {
   it("UTCの日付ではなく日本時間の日付を返す", () => {
@@ -49,6 +54,32 @@ describe("toTokyoDateString（日本時間の日付に変換）", () => {
       toTokyoDateString(new Date("2026-01-05T00:00:00Z")),
       "2026-01-05",
     );
+  });
+});
+
+describe("株価取得失敗の案内", () => {
+  it("存在しない銘柄を案内する", () => {
+    assert.match(
+      stockFetchErrorMessage(
+        "0000",
+        new Error("No data found, symbol may be delisted"),
+      ),
+      /銘柄が見つからない/,
+    );
+  });
+  it("通信エラーを案内する", () => {
+    assert.match(
+      stockFetchErrorMessage("7203", new TypeError("fetch failed")),
+      /通信エラー/,
+    );
+  });
+  it("Yahooの取得失敗で内部情報を表示しない", () => {
+    const message = stockFetchErrorMessage(
+      "7203",
+      new Error("HTTP 429: internal detail"),
+    );
+    assert.match(message, /Yahoo Finance/);
+    assert.doesNotMatch(message, /internal detail/);
   });
 });
 

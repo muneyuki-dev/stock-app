@@ -16,6 +16,21 @@ export const SCREEN_CONDITIONS = [
 ] as const;
 
 export type ScreenCondition = (typeof SCREEN_CONDITIONS)[number]["key"];
+export type ScreeningMatchMode = "all" | "any";
+export const SCREEN_CONDITION_COUNT = SCREEN_CONDITIONS.length;
+
+export type ScreeningSelection = {
+  readonly minimumMatches: number;
+  readonly requiredConditions: ReadonlySet<ScreenCondition>;
+};
+
+export type ScreeningScore = {
+  readonly matchCount: number;
+  readonly totalConditions: number;
+  readonly matchRate: number;
+  readonly matchedConditions: readonly ScreenCondition[];
+  readonly unmatchedConditions: readonly ScreenCondition[];
+};
 
 export type ScreeningResult = {
   readonly latestDate: string;
@@ -58,6 +73,89 @@ export type ScreeningOptions = {
   /** 移動平均の向きを比較する営業日数。既定は5営業日前との比較。 */
   readonly slopeSessions?: number;
 };
+
+export function matchesScreenConditions(
+  result: Pick<ScreeningResult, "conditions">,
+  selected: ReadonlySet<ScreenCondition>,
+  mode: ScreeningMatchMode,
+): boolean {
+  if (selected.size === 0) return false;
+  const values = [...selected].map(
+    (condition) => result.conditions[condition] === true,
+  );
+  return mode === "all" ? values.every(Boolean) : values.some(Boolean);
+}
+
+export function scoreScreeningConditions(
+  result: Pick<ScreeningResult, "conditions">,
+): ScreeningScore {
+  const matchedConditions = SCREEN_CONDITIONS.filter(
+    ({ key }) => result.conditions[key] === true,
+  ).map(({ key }) => key);
+  const unmatchedConditions = SCREEN_CONDITIONS.filter(
+    ({ key }) => result.conditions[key] !== true,
+  ).map(({ key }) => key);
+  return {
+    matchCount: matchedConditions.length,
+    totalConditions: SCREEN_CONDITION_COUNT,
+    matchRate: matchedConditions.length / SCREEN_CONDITION_COUNT,
+    matchedConditions,
+    unmatchedConditions,
+  };
+}
+
+export function matchesScreeningSelection(
+  result: Pick<ScreeningResult, "conditions">,
+  selection: ScreeningSelection,
+): boolean {
+  const minimumMatches = Math.min(
+    SCREEN_CONDITION_COUNT,
+    Math.max(1, Math.trunc(selection.minimumMatches)),
+  );
+  const score = scoreScreeningConditions(result);
+  return (
+    score.matchCount >= minimumMatches &&
+    [...selection.requiredConditions].every(
+      (condition) => result.conditions[condition] === true,
+    )
+  );
+}
+
+export function rankScreeningResults<
+  T extends Pick<ScreeningResult, "conditions">,
+>(results: readonly T[]): T[] {
+  return results
+    .map((result, index) => ({ result, index }))
+    .sort(
+      (left, right) =>
+        scoreScreeningConditions(right.result).matchCount -
+          scoreScreeningConditions(left.result).matchCount ||
+        left.index - right.index,
+    )
+    .map(({ result }) => result);
+}
+
+function signed(value: number): string {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+export function screeningMatchReasons(
+  result: ScreeningResult,
+  selected: ReadonlySet<ScreenCondition>,
+): readonly string[] {
+  const reasons: Partial<Record<ScreenCondition, string>> = {
+    near75: `75日線乖離 ${signed(result.distanceFrom75Percent)}（基準 ±3%）`,
+    notExtended75: `75日線乖離 ${signed(result.distanceFrom75Percent)}（基準 0〜+8%）`,
+    cross75: `75日線上抜け ${result.cross75Date ?? "—"}（直近5営業日）`,
+    risingMas: `25・75・200日線が5営業日前より上昇（現在 ${result.sma25.toFixed(1)} / ${result.sma75.toFixed(1)} / ${result.sma200.toFixed(1)}）`,
+    volumeSurge: `出来高20日平均比 ${result.volumeRatio?.toFixed(2) ?? "—"}倍（基準 1.5倍以上）`,
+    nearYearHigh: `52週高値まで ${signed(result.distanceFromYearHighPercent)}（基準 -5%以内）`,
+    firstPullback: `初押し接近日 ${result.firstPullbackDate ?? "—"}（75日線の0〜5%、直近3営業日）`,
+  };
+  return SCREEN_CONDITIONS.filter(
+    ({ key }) => selected.has(key) && result.conditions[key] === true,
+  ).map(({ key }) => reasons[key] ?? key);
+}
 
 /**
  * 日足から書籍のチェック項目に近い3条件を判定する純関数。

@@ -2,6 +2,9 @@
   "name": "stock-app",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0 <25"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,6 +12,7 @@
     "auth:hash": "node scripts/hash-password.mjs",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"src/**/*.test.ts\"",
     "check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-stock.ts",
+    "check:all": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-all-stocks.ts",
     "lint": "biome check",
     "format": "biome format --write"
   },

@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useFavorites } from "@/hooks/useFavorites";
 import {
+  matchesScreeningSelection,
+  rankScreeningResults,
   SCREEN_CONDITIONS,
   type ScreenCondition,
   type ScreeningApiResponse,
   type StockScreeningResult,
+  scoreScreeningConditions,
 } from "@/lib/screener";
-
-type MatchMode = "all" | "any";
 
 const CONDITION_DETAILS: Readonly<Record<ScreenCondition, string>> = {
   near75: "終値と75日線の差が±3%以内",
@@ -23,32 +24,28 @@ const CONDITION_DETAILS: Readonly<Record<ScreenCondition, string>> = {
     "25/75クロス後に一度8%以上上昇し、初めて75日線の0〜5%上へ戻った直近3営業日",
 };
 
-function matches(
-  result: StockScreeningResult,
-  selected: ReadonlySet<ScreenCondition>,
-  mode: MatchMode,
-) {
-  const values = [...selected].map((condition) => result.conditions[condition]);
-  return mode === "all" ? values.every(Boolean) : values.some(Boolean);
-}
-
 export function FavoriteScreener() {
   const { favorites, isLoaded } = useFavorites();
-  const [selected, setSelected] = useState<Set<ScreenCondition>>(
-    new Set(SCREEN_CONDITIONS.map((condition) => condition.key)),
-  );
-  const [mode, setMode] = useState<MatchMode>("any");
+  const [minimumMatches, setMinimumMatches] = useState(1);
+  const [required, setRequired] = useState<Set<ScreenCondition>>(new Set());
   const [response, setResponse] = useState<ScreeningApiResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const matchesResults = useMemo(() => {
-    if (response === null || selected.size === 0) return [];
-    return response.results.filter((result) => matches(result, selected, mode));
-  }, [response, selected, mode]);
+    if (response === null) return [];
+    return rankScreeningResults(
+      response.results.filter((result) =>
+        matchesScreeningSelection(result, {
+          minimumMatches,
+          requiredConditions: required,
+        }),
+      ),
+    );
+  }, [response, minimumMatches, required]);
 
-  function toggleCondition(condition: ScreenCondition) {
-    setSelected((current) => {
+  function toggleRequired(condition: ScreenCondition) {
+    setRequired((current) => {
       const next = new Set(current);
       if (next.has(condition)) next.delete(condition);
       else next.add(condition);
@@ -57,7 +54,7 @@ export function FavoriteScreener() {
   }
 
   async function runScreening() {
-    if (favorites.length === 0 || selected.size === 0) return;
+    if (favorites.length === 0) return;
     setIsLoading(true);
     setError(null);
 
@@ -96,8 +93,25 @@ export function FavoriteScreener() {
         書籍のチェック項目を数値化した学習用の目安です。該当は売買推奨を意味しません。
       </p>
 
+      <label className="mt-5 block text-sm font-medium text-slate-300">
+        一致条件数
+        <select
+          value={minimumMatches}
+          onChange={(event) => setMinimumMatches(Number(event.target.value))}
+          className="mt-2 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-slate-100"
+        >
+          {SCREEN_CONDITIONS.map((condition, index) => (
+            <option key={condition.key} value={index + 1}>
+              7条件中 {index + 1}個以上
+            </option>
+          ))}
+        </select>
+      </label>
+
       <fieldset className="mt-5 space-y-3">
-        <legend className="text-sm font-medium text-slate-300">検索条件</legend>
+        <legend className="text-sm font-medium text-slate-300">
+          必須条件（任意）
+        </legend>
         {SCREEN_CONDITIONS.map((condition) => (
           <label
             key={condition.key}
@@ -105,8 +119,8 @@ export function FavoriteScreener() {
           >
             <input
               type="checkbox"
-              checked={selected.has(condition.key)}
-              onChange={() => toggleCondition(condition.key)}
+              checked={required.has(condition.key)}
+              onChange={() => toggleRequired(condition.key)}
               className="mt-0.5 h-4 w-4 accent-sky-500"
             />
             <span>
@@ -121,34 +135,10 @@ export function FavoriteScreener() {
         ))}
       </fieldset>
 
-      <fieldset className="mt-5 flex gap-4 text-sm text-slate-300">
-        <legend className="sr-only">条件の組み合わせ</legend>
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="radio"
-            name="match-mode"
-            checked={mode === "any"}
-            onChange={() => setMode("any")}
-            className="accent-sky-500"
-          />
-          どれかを満たす
-        </label>
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="radio"
-            name="match-mode"
-            checked={mode === "all"}
-            onChange={() => setMode("all")}
-            className="accent-sky-500"
-          />
-          すべて満たす
-        </label>
-      </fieldset>
-
       <button
         type="button"
         onClick={runScreening}
-        disabled={favorites.length === 0 || selected.size === 0 || isLoading}
+        disabled={favorites.length === 0 || isLoading}
         className="mt-5 w-full rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
       >
         {isLoading
@@ -209,6 +199,10 @@ export function FavoriteScreener() {
 }
 
 function ScreeningResultCard({ result }: { result: StockScreeningResult }) {
+  const score = scoreScreeningConditions(result);
+  const labels = new Map(
+    SCREEN_CONDITIONS.map(({ key, label }) => [key, label]),
+  );
   return (
     <li className="rounded-lg border border-slate-800 p-4">
       <Link
@@ -224,6 +218,14 @@ function ScreeningResultCard({ result }: { result: StockScreeningResult }) {
         {result.latestDate} 終値 {result.close.toLocaleString("ja-JP")}円 ／
         75日線との差 {result.distanceFrom75Percent >= 0 ? "+" : ""}
         {result.distanceFrom75Percent.toFixed(2)}%
+      </p>
+      <p className="mt-2 text-sm font-medium text-emerald-300">
+        一致 {score.matchCount} / {score.totalConditions}（
+        {Math.round(score.matchRate * 100)}%）
+      </p>
+      <p className="mt-1 text-xs leading-relaxed text-slate-400">
+        一致条件:{" "}
+        {score.matchedConditions.map((key) => labels.get(key)).join("・")}
       </p>
       <p className="mt-1 text-xs tabular-nums text-slate-500">
         出来高20日平均比 {result.volumeRatio?.toFixed(2) ?? "—"}倍 ／

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { screenMovingAverageConditions } from "./screener.ts";
+import {
+  matchesScreenConditions,
+  matchesScreeningSelection,
+  rankScreeningResults,
+  scoreScreeningConditions,
+  screeningMatchReasons,
+  screenMovingAverageConditions,
+} from "./screener.ts";
 import type { Candle } from "./types.ts";
 
 function barsFromCloses(
@@ -100,5 +107,122 @@ describe("screenMovingAverageConditions", () => {
 
     assert.ok(result);
     assert.equal(result.conditions.notExtended75, true);
+  });
+});
+
+describe("条件の組み合わせと一致理由", () => {
+  it("anyは1条件、allは選択した全条件がtrueの場合だけ一致する", () => {
+    const result = screenMovingAverageConditions(
+      barsFromCloses(new Array(220).fill(100)),
+    );
+    assert.ok(result);
+    const selected = new Set(["near75", "volumeSurge"] as const);
+
+    assert.equal(matchesScreenConditions(result, selected, "any"), true);
+    assert.equal(matchesScreenConditions(result, selected, "all"), false);
+    assert.equal(matchesScreenConditions(result, new Set(), "any"), false);
+  });
+
+  it("1-of-7はOR、7-of-7はANDと同じになる", () => {
+    const base = screenMovingAverageConditions(
+      barsFromCloses(new Array(220).fill(100)),
+    );
+    assert.ok(base);
+    const allConditions = new Set(
+      Object.keys(base.conditions) as (keyof typeof base.conditions)[],
+    );
+    assert.equal(
+      matchesScreeningSelection(base, {
+        minimumMatches: 1,
+        requiredConditions: new Set(),
+      }),
+      matchesScreenConditions(base, allConditions, "any"),
+    );
+    assert.equal(
+      matchesScreeningSelection(base, {
+        minimumMatches: 7,
+        requiredConditions: new Set(),
+      }),
+      matchesScreenConditions(base, allConditions, "all"),
+    );
+  });
+
+  it("N-of-7と複数の必須条件を共通の7条件で判定する", () => {
+    const base = screenMovingAverageConditions(
+      barsFromCloses(new Array(220).fill(100)),
+    );
+    assert.ok(base);
+    const result = {
+      ...base,
+      conditions: {
+        near75: true,
+        notExtended75: true,
+        cross75: false,
+        risingMas: true,
+        volumeSurge: false,
+        nearYearHigh: false,
+        firstPullback: false,
+      },
+    };
+    const score = scoreScreeningConditions(result);
+    assert.equal(score.matchCount, 3);
+    assert.equal(score.totalConditions, 7);
+    assert.deepEqual(score.matchedConditions, [
+      "near75",
+      "notExtended75",
+      "risingMas",
+    ]);
+    assert.equal(
+      matchesScreeningSelection(result, {
+        minimumMatches: 3,
+        requiredConditions: new Set(["risingMas", "near75"]),
+      }),
+      true,
+    );
+    assert.equal(
+      matchesScreeningSelection(result, {
+        minimumMatches: 3,
+        requiredConditions: new Set(["cross75"]),
+      }),
+      false,
+    );
+    assert.equal(
+      matchesScreeningSelection(result, {
+        minimumMatches: 4,
+        requiredConditions: new Set(),
+      }),
+      false,
+    );
+  });
+
+  it("一致数の降順に並べ、同数なら元の順序を保つ", () => {
+    const base = screenMovingAverageConditions(
+      barsFromCloses(new Array(220).fill(100)),
+    );
+    assert.ok(base);
+    const make = (id: string, count: number) => ({
+      id,
+      conditions: Object.fromEntries(
+        Object.keys(base.conditions).map((key, index) => [key, index < count]),
+      ) as typeof base.conditions,
+    });
+    assert.deepEqual(
+      rankScreeningResults([make("a", 2), make("b", 4), make("c", 2)]).map(
+        ({ id }) => id,
+      ),
+      ["b", "a", "c"],
+    );
+  });
+
+  it("一致理由に実測値と閾値を含める", () => {
+    const result = screenMovingAverageConditions(
+      barsFromCloses(new Array(220).fill(100)),
+    );
+    assert.ok(result);
+    const reasons = screeningMatchReasons(result, new Set(["near75"]));
+
+    assert.equal(reasons.length, 1);
+    assert.match(reasons[0], /75日線乖離 \+0\.00%/);
+    assert.match(reasons[0], /基準 ±3%/);
   });
 });

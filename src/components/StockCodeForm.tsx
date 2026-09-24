@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useId, useState, useTransition } from "react";
 import { parseStockCode } from "@/lib/stockCode";
 
 /** 入力例として並べるボタン。動作確認しやすいよう主要銘柄を置いている */
@@ -14,6 +14,8 @@ const EXAMPLES = [
 
 export function StockCodeForm() {
   const router = useRouter();
+  const inputId = useId();
+  const [isPending, startTransition] = useTransition();
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -27,14 +29,27 @@ export function StockCodeForm() {
     }
 
     setError(null);
-    router.push(`/stocks/${result.value.code}`);
+    startTransition(() => {
+      router.push(`/stocks/${result.value.code}`);
+    });
   }
 
   return (
     <div className="w-full">
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <label htmlFor={inputId} className="mb-2 block text-sm text-slate-300">
+        銘柄コードで検索
+      </label>
+      <form
+        onSubmit={handleSubmit}
+        className="flex gap-2"
+        aria-busy={isPending}
+      >
         <input
+          id={inputId}
           type="text"
+          autoComplete="off"
+          enterKeyHint="search"
+          aria-describedby={`${inputId}-error`}
           value={input}
           onChange={(event) => {
             setInput(event.target.value);
@@ -49,14 +64,21 @@ export function StockCodeForm() {
         />
         <button
           type="submit"
+          disabled={isPending}
           className="shrink-0 rounded-lg bg-sky-600 px-6 py-3 font-medium transition-colors hover:bg-sky-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
         >
-          表示
+          {isPending ? "検索中…" : "検索"}
         </button>
       </form>
 
       {/* エラー表示。高さを固定してレイアウトが跳ねないようにしている */}
-      <p className="mt-2 min-h-5 text-sm text-rose-400">{error}</p>
+      <p
+        id={`${inputId}-error`}
+        aria-live="polite"
+        className="mt-2 min-h-5 text-sm text-rose-400"
+      >
+        {error}
+      </p>
 
       <div className="mt-4">
         <p className="mb-2 text-xs text-slate-500">例</p>

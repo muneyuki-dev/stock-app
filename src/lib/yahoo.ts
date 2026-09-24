@@ -207,12 +207,25 @@ export async function fetchDailyCandles(
       },
     };
   } catch (error) {
-    // 存在しない銘柄コード、通信エラー、Yahoo 側の仕様変更などをまとめて扱う
-    const detail = error instanceof Error ? error.message : String(error);
-
     return {
       ok: false,
-      error: `${parsed.value.code} の株価取得に失敗しました: ${detail}`,
+      error: stockFetchErrorMessage(parsed.value.code, error),
     };
   }
+}
+
+/** 外部サービスのエラー詳細を、利用者が次の操作を判断できる案内にする。 */
+export function stockFetchErrorMessage(code: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/No data found|symbol may be delisted|Quote not found/i.test(message)) {
+    return `${code} の銘柄が見つからないか、株価データがありません。銘柄コードを確認して検索し直してください。`;
+  }
+  if (
+    /fetch failed|network|ECONN|ENOTFOUND|EAI_AGAIN|timed? ?out|timeout/i.test(
+      message,
+    )
+  ) {
+    return `${code} の株価を通信エラーで取得できませんでした。時間をおいて再度検索してください。`;
+  }
+  return `${code} の株価をYahoo Financeから取得できませんでした。時間をおいて再度検索してください。`;
 }

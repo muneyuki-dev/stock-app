@@ -19,6 +19,7 @@
 *.sqlite
 *.sqlite3
 /.cache/
+/.data/
 
 # next.js
 /.next/

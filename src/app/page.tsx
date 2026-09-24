@@ -1,3 +1,4 @@
+import { AllStockScreener } from "@/components/AllStockScreener";
 import { FavoriteList } from "@/components/FavoriteList";
 import { FavoriteScreener } from "@/components/FavoriteScreener";
 import { LogoutButton } from "@/components/LogoutButton";
@@ -13,7 +14,7 @@ export default function Home() {
         <LogoutButton />
       </div>
       <p className="mt-2 text-sm text-slate-400">
-        銘柄コードを入力すると、日足チャートと移動平均線（5日・25日・75日・200日）を表示します。
+        お気に入り未登録の日本株も、4桁の銘柄コードで検索できます。詳細画面で日足チャートや移動平均線を確認し、よく見る銘柄をお気に入りに保存できます。
       </p>
 
       <div className="mt-6 sm:mt-8">
@@ -25,6 +26,7 @@ export default function Home() {
       </div>
 
       <FavoriteScreener />
+      <AllStockScreener />
 
       <p className="mt-10 text-xs leading-relaxed text-slate-500">
         株価データは Yahoo Finance

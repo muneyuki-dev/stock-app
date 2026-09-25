@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { SCREEN_CONDITIONS, type ScreenCondition } from "@/lib/screener";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  matchedSignalGroups,
+  SCREEN_CONDITIONS,
+  type ScreenCondition,
+  type ScreeningSort,
+  sortScreeningResults,
+} from "@/lib/screener";
 import type {
   AllStockScreeningStatus,
   SavedScreeningResult,
@@ -18,11 +24,19 @@ function formatDateTime(value: string | null | undefined): string {
   return value ? japaneseDateTime.format(new Date(value)) : "—";
 }
 
+function formatMoney(value: number | null | undefined): string {
+  if (value == null) return "—";
+  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(2)}億円`;
+  return `${(value / 10_000).toFixed(0)}万円`;
+}
+
 export function AllStockScreener() {
   const [status, setStatus] = useState<AllStockScreeningStatus | null>(null);
   const [results, setResults] = useState<readonly SavedScreeningResult[]>([]);
   const [minimumMatches, setMinimumMatches] = useState(1);
   const [required, setRequired] = useState<Set<ScreenCondition>>(new Set());
+  const [minimumTurnover, setMinimumTurnover] = useState(0);
+  const [sort, setSort] = useState<ScreeningSort>("matchedCount");
   const [error, setError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<
     "idle" | "copying" | "copied" | "error"
@@ -65,6 +79,7 @@ export function AllStockScreener() {
       body: JSON.stringify({
         minimumMatches,
         requiredConditions: [...required],
+        minimumAverageTurnover20d: minimumTurnover || null,
         reset,
       }),
     });
@@ -102,6 +117,10 @@ export function AllStockScreener() {
     status === null || status.total === 0
       ? 0
       : Math.round((status.processed / status.total) * 100);
+  const displayedResults = useMemo(
+    () => sortScreeningResults(results, sort),
+    [results, sort],
+  );
   return (
     <section className="mt-10 border-t border-slate-800 pt-8">
       <h2 className="text-lg font-semibold">全銘柄スクリーニング</h2>
@@ -120,6 +139,21 @@ export function AllStockScreener() {
               7条件中 {index + 1}個以上
             </option>
           ))}
+        </select>
+      </label>
+      <label className="mt-4 block text-sm font-medium text-slate-300">
+        流動性（20日平均売買代金）
+        <select
+          value={minimumTurnover}
+          onChange={(event) => setMinimumTurnover(Number(event.target.value))}
+          className="mt-2 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-slate-100"
+        >
+          <option value={0}>制限なし</option>
+          <option value={10_000_000}>1,000万円以上</option>
+          <option value={30_000_000}>3,000万円以上</option>
+          <option value={50_000_000}>5,000万円以上</option>
+          <option value={100_000_000}>1億円以上</option>
+          <option value={300_000_000}>3億円以上</option>
         </select>
       </label>
       <p className="mt-4 text-sm font-medium text-slate-300">
@@ -239,6 +273,27 @@ export function AllStockScreener() {
               <li>全条件一致: {status.allMatched ?? 0}件</li>
             </ul>
           )}
+          {results.length > 0 && (
+            <label className="mt-4 block text-sm text-slate-300">
+              並び順
+              <select
+                value={sort}
+                onChange={(event) =>
+                  setSort(event.target.value as ScreeningSort)
+                }
+                className="mt-2 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3"
+              >
+                <option value="matchedCount">条件一致数順</option>
+                <option value="signalGroupCount">
+                  シグナルグループ一致数順
+                </option>
+                <option value="volumeRatio">出来高比順</option>
+                <option value="turnoverValue">売買代金順</option>
+                <option value="nearYearHigh">52週高値への近さ順</option>
+                <option value="nearSma75">75日線乖離の小さい順</option>
+              </select>
+            </label>
+          )}
           {status.state === "completed" && results.length > 0 && (
             <div className="mt-4">
               <button
@@ -262,7 +317,7 @@ export function AllStockScreener() {
           )}
           {results.length > 0 && (
             <ul className="mt-4 space-y-2">
-              {results.slice(0, 200).map((result) => (
+              {displayedResults.slice(0, 200).map((result) => (
                 <li
                   key={result.code}
                   className="rounded-lg border border-slate-800 p-3"
@@ -279,12 +334,22 @@ export function AllStockScreener() {
                     {result.volume.toLocaleString("ja-JP")}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
+                    出来高20日平均比 {result.volumeRatio?.toFixed(2) ?? "—"}倍
+                    ／ 当日売買代金 {formatMoney(result.turnoverValue)} ／
+                    売買代金20日平均{" "}
+                    {formatMoney(result.averageTurnoverValue20d)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
                     データ取得日時 {formatDateTime(result.fetchedAt)} ／
                     判定日時 {formatDateTime(result.screenedAt)}
                   </p>
                   <p className="mt-2 text-sm font-medium text-emerald-300">
                     一致 {result.matchCount} / {result.totalConditions}（
                     {Math.round(result.matchRate * 100)}%）
+                  </p>
+                  <p className="mt-1 text-xs text-indigo-300">
+                    シグナルグループ {matchedSignalGroups(result).length}件（
+                    {matchedSignalGroups(result).join("・")}）
                   </p>
                   <p className="mt-1 text-xs leading-relaxed text-slate-400">
                     一致条件: {result.matchedConditionNames.join("・")}

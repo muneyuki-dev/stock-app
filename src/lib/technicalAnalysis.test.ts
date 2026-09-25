@@ -73,6 +73,34 @@ describe("aggregateWeeklyCandles", () => {
 });
 
 describe("analyzeTechnicalSnapshot", () => {
+  it("当日と直前20日の売買代金を計算する", () => {
+    const candles = Array.from({ length: 220 }, (_, index) => ({
+      date: `2025-01-${String(index + 1).padStart(2, "0")}`,
+      open: 100,
+      high: 101,
+      low: 99,
+      close: index === 219 ? 200 : 100,
+      volume: index === 219 ? 2_000 : 1_000,
+    }));
+    const result = analyzeTechnicalSnapshot(candles);
+    assert.equal(result?.turnoverValue, 400_000);
+    assert.equal(result?.averageTurnoverValue20d, 100_000);
+    assert.equal(result?.turnoverRatio20d, 4);
+  });
+
+  it("直前20日の売買代金が不足する場合はnullを保持する", () => {
+    const candles = Array.from({ length: 220 }, (_, index) => ({
+      date: `2025-01-${String(index + 1).padStart(2, "0")}`,
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      volume: index === 210 ? 0 : 1_000,
+    }));
+    const result = analyzeTechnicalSnapshot(candles);
+    assert.equal(result?.averageTurnoverValue20d, null);
+    assert.equal(result?.turnoverRatio20d, null);
+  });
   it("200本未満では移動平均の診断を行わない", () => {
     assert.equal(analyzeTechnicalSnapshot(candlesFromCloses([100, 101])), null);
   });

@@ -26,7 +26,6 @@ export type AllStockScreeningItem = {
 };
 
 export type SavedScreeningResult = StockScreeningResult & {
-  readonly volume: number;
   readonly matchedReasons: readonly string[];
   readonly screenedAt: string;
   readonly fetchedAt: string;
@@ -76,6 +75,7 @@ export type AllStockScreeningRun = {
   readonly matchMode?: ScreeningMatchMode;
   readonly minimumMatches: number;
   readonly requiredConditions: readonly ScreenCondition[];
+  readonly minimumAverageTurnover20d?: number | null;
   readonly dateSummary?: ScreeningDateSummary;
   readonly items: readonly AllStockScreeningItem[];
   readonly results: readonly SavedScreeningResult[];

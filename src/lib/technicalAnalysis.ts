@@ -47,6 +47,9 @@ export type TechnicalSnapshot = {
   readonly distanceFrom75Percent: number;
   readonly averageVolume20: number | null;
   readonly volumeRatio: number | null;
+  readonly turnoverValue: number | null;
+  readonly averageTurnoverValue20d: number | null;
+  readonly turnoverRatio20d: number | null;
   readonly yearHigh: number;
   readonly yearLow: number;
   /** 52週高値を0として、現在値が何%下にあるか（通常は0以下）。 */
@@ -320,6 +323,20 @@ export function analyzeTechnicalSnapshot(
     averageVolume20 === null || latest.volume <= 0
       ? null
       : latest.volume / averageVolume20;
+  const previousTurnovers = candles
+    .slice(-(TECHNICAL_RULES.volumeAverageSessions + 1), -1)
+    .filter((candle) => candle.volume > 0)
+    .map((candle) => candle.close * candle.volume);
+  const turnoverValue =
+    latest.close > 0 && latest.volume > 0 ? latest.close * latest.volume : null;
+  const averageTurnoverValue20d =
+    previousTurnovers.length === TECHNICAL_RULES.volumeAverageSessions
+      ? average(previousTurnovers)
+      : null;
+  const turnoverRatio20d =
+    turnoverValue === null || averageTurnoverValue20d === null
+      ? null
+      : turnoverValue / averageTurnoverValue20d;
 
   const yearSessions = options.yearSessions ?? TECHNICAL_RULES.yearSessions;
   const yearCandles = candles.slice(-yearSessions);
@@ -388,6 +405,9 @@ export function analyzeTechnicalSnapshot(
     distanceFrom75Percent,
     averageVolume20,
     volumeRatio,
+    turnoverValue,
+    averageTurnoverValue20d,
+    turnoverRatio20d,
     yearHigh,
     yearLow,
     distanceFromYearHighPercent,

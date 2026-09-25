@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
     reset?: unknown;
     minimumMatches?: unknown;
     requiredConditions?: unknown;
+    minimumAverageTurnover20d?: unknown;
     limit?: unknown;
   };
   const valid = new Set(SCREEN_CONDITIONS.map((condition) => condition.key));
@@ -60,6 +61,20 @@ export async function POST(request: NextRequest) {
       )
     : [];
   const limit = body.limit === undefined ? undefined : Number(body.limit);
+  const minimumAverageTurnover20d =
+    body.minimumAverageTurnover20d === null ||
+    body.minimumAverageTurnover20d === undefined
+      ? null
+      : Number(body.minimumAverageTurnover20d);
+  if (
+    minimumAverageTurnover20d !== null &&
+    (!Number.isFinite(minimumAverageTurnover20d) ||
+      minimumAverageTurnover20d < 0)
+  )
+    return Response.json(
+      { error: "平均売買代金の指定が不正です。" },
+      { status: 400 },
+    );
   if (
     limit !== undefined &&
     (!Number.isInteger(limit) || limit < 1 || limit > 3_700)
@@ -73,6 +88,7 @@ export async function POST(request: NextRequest) {
     matchMode: body.matchMode === "all" ? "all" : "any",
     minimumMatches,
     requiredConditions,
+    minimumAverageTurnover20d,
     limit,
     reset: body.reset === true,
   });

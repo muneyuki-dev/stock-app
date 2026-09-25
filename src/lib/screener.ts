@@ -16,6 +16,23 @@ export const SCREEN_CONDITIONS = [
 ] as const;
 
 export type ScreenCondition = (typeof SCREEN_CONDITIONS)[number]["key"];
+export const SIGNAL_GROUPS = {
+  near75: "position",
+  notExtended75: "position",
+  cross75: "trigger",
+  risingMas: "trend",
+  volumeSurge: "volume",
+  nearYearHigh: "breakout",
+  firstPullback: "pullback",
+} as const satisfies Readonly<Record<ScreenCondition, string>>;
+export type SignalGroup = (typeof SIGNAL_GROUPS)[ScreenCondition];
+export type ScreeningSort =
+  | "matchedCount"
+  | "signalGroupCount"
+  | "volumeRatio"
+  | "turnoverValue"
+  | "nearYearHigh"
+  | "nearSma75";
 export type ScreeningMatchMode = "all" | "any";
 export const SCREEN_CONDITION_COUNT = SCREEN_CONDITIONS.length;
 
@@ -41,6 +58,11 @@ export type ScreeningResult = {
   /** 終値が75日線から何%離れているか。プラスなら上、マイナスなら下。 */
   readonly distanceFrom75Percent: number;
   readonly volumeRatio: number | null;
+  readonly volume: number;
+  readonly averageVolume20: number | null;
+  readonly turnoverValue: number | null;
+  readonly averageTurnoverValue20d: number | null;
+  readonly turnoverRatio20d: number | null;
   readonly distanceFromYearHighPercent: number;
   readonly yearHigh: number;
   readonly yearLow: number;
@@ -135,6 +157,54 @@ export function rankScreeningResults<
     .map(({ result }) => result);
 }
 
+export function matchedSignalGroups(
+  result: Pick<ScreeningResult, "conditions">,
+): readonly SignalGroup[] {
+  return [
+    ...new Set(
+      SCREEN_CONDITIONS.filter(
+        ({ key }) => result.conditions[key] === true,
+      ).map(({ key }) => SIGNAL_GROUPS[key]),
+    ),
+  ];
+}
+
+export function passesLiquidityFilter(
+  result: Pick<ScreeningResult, "averageTurnoverValue20d">,
+  minimumAverageTurnover20d: number | null,
+): boolean {
+  return (
+    minimumAverageTurnover20d === null ||
+    minimumAverageTurnover20d <= 0 ||
+    (result.averageTurnoverValue20d !== null &&
+      result.averageTurnoverValue20d >= minimumAverageTurnover20d)
+  );
+}
+
+export function sortScreeningResults<T extends ScreeningResult>(
+  results: readonly T[],
+  sort: ScreeningSort,
+): T[] {
+  const value = (result: T): number => {
+    if (sort === "matchedCount")
+      return scoreScreeningConditions(result).matchCount;
+    if (sort === "signalGroupCount") return matchedSignalGroups(result).length;
+    if (sort === "volumeRatio")
+      return result.volumeRatio ?? Number.NEGATIVE_INFINITY;
+    if (sort === "turnoverValue")
+      return result.turnoverValue ?? Number.NEGATIVE_INFINITY;
+    if (sort === "nearYearHigh") return result.distanceFromYearHighPercent;
+    return -Math.abs(result.distanceFrom75Percent);
+  };
+  return results
+    .map((result, index) => ({ result, index }))
+    .sort(
+      (left, right) =>
+        value(right.result) - value(left.result) || left.index - right.index,
+    )
+    .map(({ result }) => result);
+}
+
 function signed(value: number): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
@@ -221,7 +291,12 @@ export function screenMovingAverageConditions(
     sma75,
     sma200,
     distanceFrom75Percent,
+    volume: bars[latestIndex].volume,
+    averageVolume20: technical.averageVolume20,
     volumeRatio: technical.volumeRatio,
+    turnoverValue: technical.turnoverValue,
+    averageTurnoverValue20d: technical.averageTurnoverValue20d,
+    turnoverRatio20d: technical.turnoverRatio20d,
     distanceFromYearHighPercent: technical.distanceFromYearHighPercent,
     yearHigh: technical.yearHigh,
     yearLow: technical.yearLow,

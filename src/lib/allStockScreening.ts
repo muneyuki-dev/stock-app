@@ -3,6 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
   matchesScreenConditions,
   matchesScreeningSelection,
+  passesLiquidityFilter,
   rankScreeningResults,
   SCREEN_CONDITIONS,
   type ScreenCondition,
@@ -73,6 +74,7 @@ type StartOptions = {
   readonly matchMode?: "all" | "any";
   readonly minimumMatches?: number;
   readonly requiredConditions?: readonly ScreenCondition[];
+  readonly minimumAverageTurnover20d?: number | null;
   readonly limit?: number;
   readonly reset?: boolean;
 };
@@ -85,6 +87,7 @@ async function processOne(
   code: string,
   minimumMatches: number,
   requiredConditions: ReadonlySet<ScreenCondition>,
+  minimumAverageTurnover20d: number | null,
 ) {
   let fetched: Awaited<ReturnType<typeof loadScreeningStockData>> | null = null;
   for (let attempt = 0; attempt <= RETRIES; attempt++) {
@@ -138,28 +141,25 @@ async function processOne(
   );
   const anyMatch = matchesScreenConditions(screened, allConditions, "any");
   const allMatch = matchesScreenConditions(screened, allConditions, "all");
-  const latest = fetched.value.candles[fetched.value.candles.length - 1];
-  const result: SavedScreeningResult | null = matchesScreeningSelection(
-    screened,
-    { minimumMatches, requiredConditions },
-  )
-    ? {
-        ...screened,
-        code,
-        name: fetched.value.name,
-        volume: latest.volume,
-        matchedReasons,
-        ...score,
-        matchedConditionNames: SCREEN_CONDITIONS.filter(({ key }) =>
-          score.matchedConditions.includes(key),
-        ).map(({ label }) => label),
-        unmatchedConditionNames: SCREEN_CONDITIONS.filter(({ key }) =>
-          score.unmatchedConditions.includes(key),
-        ).map(({ label }) => label),
-        fetchedAt: fetched.value.fetchedAt,
-        screenedAt,
-      }
-    : null;
+  const result: SavedScreeningResult | null =
+    passesLiquidityFilter(screened, minimumAverageTurnover20d) &&
+    matchesScreeningSelection(screened, { minimumMatches, requiredConditions })
+      ? {
+          ...screened,
+          code,
+          name: fetched.value.name,
+          matchedReasons,
+          ...score,
+          matchedConditionNames: SCREEN_CONDITIONS.filter(({ key }) =>
+            score.matchedConditions.includes(key),
+          ).map(({ label }) => label),
+          unmatchedConditionNames: SCREEN_CONDITIONS.filter(({ key }) =>
+            score.unmatchedConditions.includes(key),
+          ).map(({ label }) => label),
+          fetchedAt: fetched.value.fetchedAt,
+          screenedAt,
+        }
+      : null;
   return {
     item: {
       code,
@@ -210,6 +210,7 @@ async function worker(): Promise<void> {
                 stock.code,
                 run.minimumMatches ?? (run.matchMode === "all" ? 7 : 1),
                 new Set(run.requiredConditions ?? []),
+                run.minimumAverageTurnover20d ?? null,
               ),
             ),
         )),
@@ -311,6 +312,7 @@ export async function startAllStockScreening(
     matchMode: options.matchMode ?? "any",
     minimumMatches,
     requiredConditions: options.requiredConditions ?? [],
+    minimumAverageTurnover20d: options.minimumAverageTurnover20d ?? null,
     dateSummary: summarizeScreeningDates([]),
     items: [],
     results: [],

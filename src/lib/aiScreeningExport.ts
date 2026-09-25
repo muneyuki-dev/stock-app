@@ -1,4 +1,9 @@
-import { SCREEN_CONDITIONS, type ScreenCondition } from "./screener.ts";
+import {
+  matchedSignalGroups,
+  SCREEN_CONDITIONS,
+  type ScreenCondition,
+  SIGNAL_GROUPS,
+} from "./screener.ts";
 import type {
   AllStockScreeningRun,
   SavedScreeningResult,
@@ -43,6 +48,7 @@ function exportResult(
   result: SavedScreeningResult,
   primaryDate: string | null,
 ) {
+  const signalGroups = matchedSignalGroups(result);
   return {
     code: result.code,
     ticker: toYahooSymbol(result.code),
@@ -60,6 +66,11 @@ function exportResult(
     matchedConditions: conditionDetails(result.matchedConditions),
     unmatchedConditions: conditionDetails(result.unmatchedConditions),
     reasons: result.matchedReasons,
+    turnoverValue: result.turnoverValue ?? null,
+    averageTurnoverValue20d: result.averageTurnoverValue20d ?? null,
+    turnoverRatio20d: result.turnoverRatio20d ?? null,
+    matchedSignalGroupCount: signalGroups.length,
+    matchedSignalGroups: signalGroups,
     technicalValues: {
       sma5: null,
       sma25: result.sma25,
@@ -67,6 +78,9 @@ function exportResult(
       sma200: result.sma200,
       deviationFromSma75Percent: result.distanceFrom75Percent,
       volumeRatio20d: result.volumeRatio,
+      turnoverValue: result.turnoverValue ?? null,
+      averageTurnoverValue20d: result.averageTurnoverValue20d ?? null,
+      turnoverRatio20d: result.turnoverRatio20d ?? null,
       high52Week: result.yearHigh,
       low52Week: result.yearLow,
       distanceFrom52WeekHighPercent: result.distanceFromYearHighPercent,
@@ -100,11 +114,13 @@ export function createAiScreeningExport(
       screeningMode: "nOf7",
       minMatchedConditions: run.minimumMatches,
       requiredConditions: conditionDetails(run.requiredConditions),
+      minimumAverageTurnover20d: run.minimumAverageTurnover20d ?? null,
       sortOrder: "matchedCountDesc",
     },
     screeningDefinition: {
       totalConditions: SCREEN_CONDITIONS.length,
       conditions: AI_SCREENING_DEFINITION,
+      signalGroups: SIGNAL_GROUPS,
     },
     results: run.results.map((result) => exportResult(result, primaryDate)),
   };

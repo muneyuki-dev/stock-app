@@ -4,13 +4,17 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useFavorites } from "@/hooks/useFavorites";
 import {
+  matchedSignalGroups,
   matchesScreeningSelection,
+  passesLiquidityFilter,
   rankScreeningResults,
   SCREEN_CONDITIONS,
   type ScreenCondition,
   type ScreeningApiResponse,
+  type ScreeningSort,
   type StockScreeningResult,
   scoreScreeningConditions,
+  sortScreeningResults,
 } from "@/lib/screener";
 
 const CONDITION_DETAILS: Readonly<Record<ScreenCondition, string>> = {
@@ -24,25 +28,37 @@ const CONDITION_DETAILS: Readonly<Record<ScreenCondition, string>> = {
     "25/75クロス後に一度8%以上上昇し、初めて75日線の0〜5%上へ戻った直近3営業日",
 };
 
+function formatMoney(value: number | null | undefined): string {
+  if (value == null) return "—";
+  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(2)}億円`;
+  return `${(value / 10_000).toFixed(0)}万円`;
+}
+
 export function FavoriteScreener() {
   const { favorites, isLoaded } = useFavorites();
   const [minimumMatches, setMinimumMatches] = useState(1);
   const [required, setRequired] = useState<Set<ScreenCondition>>(new Set());
+  const [minimumTurnover, setMinimumTurnover] = useState(0);
+  const [sort, setSort] = useState<ScreeningSort>("matchedCount");
   const [response, setResponse] = useState<ScreeningApiResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const matchesResults = useMemo(() => {
     if (response === null) return [];
-    return rankScreeningResults(
-      response.results.filter((result) =>
-        matchesScreeningSelection(result, {
-          minimumMatches,
-          requiredConditions: required,
-        }),
+    return sortScreeningResults(
+      rankScreeningResults(
+        response.results.filter(
+          (result) =>
+            matchesScreeningSelection(result, {
+              minimumMatches,
+              requiredConditions: required,
+            }) && passesLiquidityFilter(result, minimumTurnover || null),
+        ),
       ),
+      sort,
     );
-  }, [response, minimumMatches, required]);
+  }, [response, minimumMatches, required, minimumTurnover, sort]);
 
   function toggleRequired(condition: ScreenCondition) {
     setRequired((current) => {
@@ -107,6 +123,21 @@ export function FavoriteScreener() {
           ))}
         </select>
       </label>
+      <label className="mt-5 block text-sm font-medium text-slate-300">
+        流動性（20日平均売買代金）
+        <select
+          value={minimumTurnover}
+          onChange={(event) => setMinimumTurnover(Number(event.target.value))}
+          className="mt-2 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-slate-100"
+        >
+          <option value={0}>制限なし</option>
+          <option value={10_000_000}>1,000万円以上</option>
+          <option value={30_000_000}>3,000万円以上</option>
+          <option value={50_000_000}>5,000万円以上</option>
+          <option value={100_000_000}>1億円以上</option>
+          <option value={300_000_000}>3億円以上</option>
+        </select>
+      </label>
 
       <fieldset className="mt-5 space-y-3">
         <legend className="text-sm font-medium text-slate-300">
@@ -159,6 +190,21 @@ export function FavoriteScreener() {
 
       {response !== null && !isLoading && (
         <div className="mt-6">
+          <label className="block text-sm text-slate-300">
+            並び順
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value as ScreeningSort)}
+              className="mt-2 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3"
+            >
+              <option value="matchedCount">条件一致数順</option>
+              <option value="signalGroupCount">シグナルグループ一致数順</option>
+              <option value="volumeRatio">出来高比順</option>
+              <option value="turnoverValue">売買代金順</option>
+              <option value="nearYearHigh">52週高値への近さ順</option>
+              <option value="nearSma75">75日線乖離の小さい順</option>
+            </select>
+          </label>
           <p className="text-sm text-slate-400">
             該当{" "}
             <span className="font-semibold text-slate-100">
@@ -219,6 +265,14 @@ function ScreeningResultCard({ result }: { result: StockScreeningResult }) {
         75日線との差 {result.distanceFrom75Percent >= 0 ? "+" : ""}
         {result.distanceFrom75Percent.toFixed(2)}%
       </p>
+      <p className="mt-1 text-xs tabular-nums text-slate-500">
+        当日出来高 {result.volume.toLocaleString("ja-JP")} ／ 出来高20日平均比{" "}
+        {result.volumeRatio?.toFixed(2) ?? "—"}倍
+      </p>
+      <p className="mt-1 text-xs tabular-nums text-slate-500">
+        当日売買代金 {formatMoney(result.turnoverValue)} ／ 売買代金20日平均{" "}
+        {formatMoney(result.averageTurnoverValue20d)}
+      </p>
       <p className="mt-2 text-sm font-medium text-emerald-300">
         一致 {score.matchCount} / {score.totalConditions}（
         {Math.round(score.matchRate * 100)}%）
@@ -226,6 +280,10 @@ function ScreeningResultCard({ result }: { result: StockScreeningResult }) {
       <p className="mt-1 text-xs leading-relaxed text-slate-400">
         一致条件:{" "}
         {score.matchedConditions.map((key) => labels.get(key)).join("・")}
+      </p>
+      <p className="mt-1 text-xs text-indigo-300">
+        シグナルグループ {matchedSignalGroups(result).length}件（
+        {matchedSignalGroups(result).join("・")}）
       </p>
       <p className="mt-1 text-xs tabular-nums text-slate-500">
         出来高20日平均比 {result.volumeRatio?.toFixed(2) ?? "—"}倍 ／

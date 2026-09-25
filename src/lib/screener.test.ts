@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  matchedSignalGroups,
   matchesScreenConditions,
   matchesScreeningSelection,
+  passesLiquidityFilter,
   rankScreeningResults,
   scoreScreeningConditions,
   screeningMatchReasons,
@@ -111,6 +113,40 @@ describe("screenMovingAverageConditions", () => {
 });
 
 describe("条件の組み合わせと一致理由", () => {
+  it("流動性フィルターは7条件とは別に20日平均売買代金を判定する", () => {
+    assert.equal(
+      passesLiquidityFilter(
+        { averageTurnoverValue20d: 50_000_000 },
+        30_000_000,
+      ),
+      true,
+    );
+    assert.equal(
+      passesLiquidityFilter({ averageTurnoverValue20d: null }, 30_000_000),
+      false,
+    );
+    assert.equal(
+      passesLiquidityFilter({ averageTurnoverValue20d: null }, null),
+      true,
+    );
+    assert.equal(
+      passesLiquidityFilter({ averageTurnoverValue20d: null }, 0),
+      true,
+    );
+  });
+  it("near75とnotExtended75が一致してもpositionは1グループ", () => {
+    const result = screenMovingAverageConditions(
+      barsFromCloses(new Array(220).fill(100)),
+    );
+    assert.ok(result);
+    assert.equal(result.conditions.near75, true);
+    assert.equal(result.conditions.notExtended75, true);
+    assert.equal(
+      matchedSignalGroups(result).filter((group) => group === "position")
+        .length,
+      1,
+    );
+  });
   it("anyは1条件、allは選択した全条件がtrueの場合だけ一致する", () => {
     const result = screenMovingAverageConditions(
       barsFromCloses(new Array(220).fill(100)),

@@ -17,6 +17,10 @@ const baseResult: SavedScreeningResult = {
   screenedAt: "2026-09-24T08:05:00.000Z",
   close: 3124.5,
   volume: 12345678,
+  averageVolume20: 6_783_944,
+  turnoverValue: 38_580_246_531,
+  averageTurnoverValue20d: 20_000_000_000,
+  turnoverRatio20d: 1.929,
   sma25: 3000,
   sma75: 3050,
   sma200: 2800,
@@ -125,6 +129,17 @@ describe("AI分析用スクリーニングJSON", () => {
       assert.equal(output.results[0].daysBehindPrimaryDate, 1);
       assert.equal(typeof output.results[0].close, "number");
       assert.equal(output.results[0].technicalValues.sma5, null);
+      assert.equal(output.results[0].turnoverValue, 38_580_246_531);
+      assert.equal(output.results[0].averageTurnoverValue20d, 20_000_000_000);
+      assert.equal(output.results[0].turnoverRatio20d, 1.929);
+      assert.deepEqual(output.results[0].matchedSignalGroups, [
+        "position",
+        "trend",
+        "volume",
+        "breakout",
+      ]);
+      assert.equal(output.results[0].matchedSignalGroupCount, 4);
+      assert.equal(output.screeningDefinition.signalGroups.near75, "position");
       assert.equal(output.results[0].matchedConditions[0].id, "near75");
       assert.match(output.results[0].reasons[1], /1\.82倍/);
     });
